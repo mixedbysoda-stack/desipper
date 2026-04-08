@@ -1,0 +1,25 @@
+# Build
+build/
+dist/
+cmake-build-*/
+
+# IDE
+.idea/
+.vscode/
+*.xcodeproj/
+*.xcworkspace/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Binaries
+*.o
+*.a
+*.dylib
+*.dll
+*.exe
+*.vst3
+*.component
+*.aaxplugin
