@@ -11,7 +11,11 @@ public:
     LicenseManager();
     ~LicenseManager() = default;
 
+#if DEMO_BUILD
+    bool isActivated() const { return false; }
+#else
     bool isActivated() const { return activated.load (std::memory_order_relaxed); }
+#endif
     const std::atomic<bool>* getActivatedFlagPtr() const { return &activated; }
 
     void tryActivate (const juce::String& key,

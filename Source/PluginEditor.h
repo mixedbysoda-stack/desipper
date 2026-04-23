@@ -54,6 +54,7 @@ public:
     void paint (juce::Graphics& g) override;
     void resized() override;
     void timerCallback() override;
+    void parentHierarchyChanged() override;
 
 private:
     SipperProcessor& processor;

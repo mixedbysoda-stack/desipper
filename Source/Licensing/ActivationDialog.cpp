@@ -2,11 +2,57 @@
 
 ActivationDialog::ActivationDialog (LicenseManager& lm)
     : licenseManager (lm),
-      buyLink  ("Buy De-Sipper",  juce::URL ("https://carbonatedaudio.com")),
+      buyLink  ("Buy De-Sipper",  juce::URL ("https://carbonatedaudio.com/desipper")),
       helpLink ("Need help?",     juce::URL ("mailto:support@carbonatedaudio.com"))
 {
     setInterceptsMouseClicks (true, true);
 
+#if DEMO_BUILD
+    // --- Demo mode UI ---
+    titleLabel.setText ("De-Sipper Demo", juce::dontSendNotification);
+    titleLabel.setFont (juce::Font (24.0f).boldened());
+    titleLabel.setJustificationType (juce::Justification::centred);
+    titleLabel.setColour (juce::Label::textColourId, juce::Colour (0xffd4d4d8));
+    addAndMakeVisible (titleLabel);
+
+    instructionLabel.setText ("Full-featured demo \xe2\x80\x94 audio mutes for 10s every 60s.\nPurchase to remove the limitation.",
+                              juce::dontSendNotification);
+    instructionLabel.setFont (juce::Font (13.0f));
+    instructionLabel.setJustificationType (juce::Justification::centred);
+    instructionLabel.setColour (juce::Label::textColourId, juce::Colour (0xffa1a1aa));
+    addAndMakeVisible (instructionLabel);
+
+    // Hide key input and activate button in demo mode
+    keyInput.setVisible (false);
+    activateButton.setVisible (false);
+
+    // Status shows demo badge
+    statusLabel.setText ("DEMO VERSION", juce::dontSendNotification);
+    statusLabel.setFont (juce::Font (14.0f).boldened());
+    statusLabel.setJustificationType (juce::Justification::centred);
+    statusLabel.setColour (juce::Label::textColourId, juce::Colour (0xfffbbf24)); // amber
+    addAndMakeVisible (statusLabel);
+
+    // "Try It" button dismisses the dialog
+    activateButton.setButtonText ("Try It");
+    activateButton.onClick = [this]() { setVisible (false); };
+    activateButton.setColour (juce::TextButton::buttonColourId,  juce::Colour (0xff3b82f6));
+    activateButton.setColour (juce::TextButton::textColourOnId,  juce::Colours::white);
+    activateButton.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+    activateButton.setVisible (true);
+    addAndMakeVisible (activateButton);
+
+    // Links
+    buyLink.setColour (juce::HyperlinkButton::textColourId, juce::Colour (0xff3b82f6));
+    buyLink.setFont (juce::Font (13.0f), false);
+    addAndMakeVisible (buyLink);
+
+    helpLink.setColour (juce::HyperlinkButton::textColourId, juce::Colour (0xff52525b));
+    helpLink.setFont (juce::Font (13.0f), false);
+    addAndMakeVisible (helpLink);
+
+#else
+    // --- Full version UI ---
     // Title
     titleLabel.setText ("Activate De-Sipper", juce::dontSendNotification);
     titleLabel.setFont (juce::Font (24.0f).boldened());
@@ -57,6 +103,7 @@ ActivationDialog::ActivationDialog (LicenseManager& lm)
     helpLink.setColour (juce::HyperlinkButton::textColourId, juce::Colour (0xff52525b));
     helpLink.setFont (juce::Font (13.0f), false);
     addAndMakeVisible (helpLink);
+#endif
 }
 
 void ActivationDialog::paint (juce::Graphics& g)
@@ -113,8 +160,10 @@ void ActivationDialog::resized()
 
 void ActivationDialog::visibilityChanged()
 {
+#if ! DEMO_BUILD
     if (isVisible())
         keyInput.grabKeyboardFocus();
+#endif
 }
 
 void ActivationDialog::onActivateClicked()

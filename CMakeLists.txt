@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(COPY_AFTER_BUILD "Copy plugins to system folders after build" ON)
+option(BUILD_DEMO "Build demo version (always runs in trial mode)" OFF)
 
 if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -74,6 +75,10 @@ target_compile_definitions(Sipper
         JUCE_DISPLAY_SPLASH_SCREEN=0
         JUCE_REPORT_APP_USAGE=0
 )
+
+if(BUILD_DEMO)
+    target_compile_definitions(Sipper PRIVATE DEMO_BUILD=1)
+endif()
 
 if(APPLE AND AAX_SDK_PATH)
     target_compile_definitions(Sipper PUBLIC
