@@ -23,3 +23,5 @@ cmake-build-*/
 *.vst3
 *.component
 *.aaxplugin
+
+build-demo-fix/
