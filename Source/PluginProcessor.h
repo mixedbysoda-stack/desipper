@@ -3,6 +3,8 @@
 #include <juce_dsp/juce_dsp.h>
 #include "DSP/DeEsserEngine.h"
 #include "Licensing/LicenseManager.h"
+#include <atomic>
+#include <vector>
 
 class SipperProcessor : public juce::AudioProcessor
 {
@@ -43,8 +45,9 @@ public:
     // Licensing
     LicenseManager& getLicenseManager() { return licenseManager; }
 
-    // External sidechain state for GUI indicator
-    bool isExternalSideChainActive() const { return externalScActive; }
+    // External sidechain state for GUI indicator: true only while the
+    // sidechain bus is enabled AND actually carrying signal
+    bool isExternalSideChainActive() const { return externalScActive.load (std::memory_order_relaxed); }
 
 private:
     juce::AudioProcessorValueTreeState apvts;
@@ -52,7 +55,20 @@ private:
 
     DeEsserEngine engine;
     LicenseManager licenseManager;
-    bool externalScActive = false;
+    std::atomic<bool> externalScActive { false };
+
+    // External sidechain signal detection. Some hosts (e.g. Digital Performer)
+    // enable the sidechain bus with nothing routed to it; a silent key must not
+    // replace the internal sidechain, so the external key is only used while it
+    // has carried signal within the last scHoldSeconds.
+    static constexpr float scSilenceThreshold = 3.1623e-5f; // -90 dBFS
+    static constexpr double scHoldSeconds = 0.4;
+    int scHoldSamples = 0;
+    int scHoldRemaining = 0;
+    std::vector<float> scMonoBuf;
+
+    // Demo mode: running sample counter for the 60s play / 10s mute cycle
+    long long demoSampleCounter = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SipperProcessor)
 };
