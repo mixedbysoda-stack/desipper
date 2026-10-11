@@ -68,11 +68,18 @@ bool SipperProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 void SipperProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engine.prepare (sampleRate, samplesPerBlock);
+
+    scMonoBuf.resize (size_t (samplesPerBlock));
+    scHoldSamples = int (sampleRate * scHoldSeconds);
+    scHoldRemaining = 0;
+    externalScActive.store (false, std::memory_order_relaxed);
 }
 
 void SipperProcessor::releaseResources()
 {
     engine.reset();
+    scHoldRemaining = 0;
+    externalScActive.store (false, std::memory_order_relaxed);
 }
 
 void SipperProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -92,12 +99,50 @@ void SipperProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                                ? DeEsserEngine::MonitorMode::SideChain
                                : DeEsserEngine::MonitorMode::Audio);
 
+    // Only the main bus is processed and written to the output; sidechain
+    // channels (if any) live beyond it in the same buffer and are read-only.
+    auto mainBuffer = getBusBuffer (buffer, false, 0);
+    const int numSamples = buffer.getNumSamples();
+
     // Check for external sidechain input (bus index 1)
-    // In Pro Tools (AAX), this is the key/sidechain input
+    // In Pro Tools (AAX), this is the key/sidechain input. Some hosts (Digital
+    // Performer) enable this bus by default with nothing routed to it, so the
+    // key is only used while it is actually carrying signal; otherwise the
+    // internal sidechain (filtered main input) drives the detector.
+    bool hasExternalSc = false;
     auto* scBus = getBus (true, 1);
-    const bool hasExternalSc = (scBus != nullptr && scBus->isEnabled()
-                                 && buffer.getNumChannels() > 2);
-    externalScActive = hasExternalSc;
+    if (scBus != nullptr && scBus->isEnabled() && scBus->getNumberOfChannels() > 0
+        && scBus->getChannelIndexInProcessBlockBuffer (0) + scBus->getNumberOfChannels()
+               <= buffer.getNumChannels())
+    {
+        auto scBuffer = getBusBuffer (buffer, true, 1);
+        const int numScChannels = juce::jmin (scBuffer.getNumChannels(), 2);
+
+        if (scMonoBuf.size() < size_t (numSamples))
+            scMonoBuf.resize (size_t (numSamples));
+
+        // Mono key as-is; stereo key summed to mono (0.5 * (L + R))
+        const float* scL = scBuffer.getReadPointer (0);
+        const float* scR = scBuffer.getReadPointer (numScChannels - 1);
+        float scPeak = 0.0f;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            scPeak = juce::jmax (scPeak, std::abs (scL[i]), std::abs (scR[i]));
+            scMonoBuf[size_t (i)] = numScChannels > 1 ? 0.5f * (scL[i] + scR[i]) : scL[i];
+        }
+
+        if (scPeak > scSilenceThreshold)
+            scHoldRemaining = scHoldSamples;
+        else
+            scHoldRemaining = juce::jmax (0, scHoldRemaining - numSamples);
+
+        hasExternalSc = scHoldRemaining > 0;
+    }
+    else
+    {
+        scHoldRemaining = 0;
+    }
+    externalScActive.store (hasExternalSc, std::memory_order_relaxed);
 
     // Demo mode: 60s play / 10s mute cycle when not activated
     if (! licenseManager.isActivated())
@@ -109,10 +154,9 @@ void SipperProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             double (getTotalNumOutputChannels() > 0 ? getBlockSize() : 0) / sampleRate,
             cycleSeconds);
 
-        // Simple approach: use a running sample counter
-        static long long sampleCounter = 0;
-        sampleCounter += totalSamples;
-        double timeInCycle = std::fmod (double (sampleCounter) / sampleRate, cycleSeconds);
+        // Simple approach: use a running sample counter (per instance)
+        demoSampleCounter += totalSamples;
+        double timeInCycle = std::fmod (double (demoSampleCounter) / sampleRate, cycleSeconds);
 
         if (timeInCycle >= 60.0)
         {
@@ -124,18 +168,13 @@ void SipperProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     if (hasExternalSc)
     {
-        // External sidechain: use channels beyond the main stereo pair
-        // The sidechain audio is in channel index 2 (and optionally 3 for stereo sc)
-        int scChannel = 2;
-        int numSamples = buffer.getNumSamples();
-
-        // Pass the external sidechain data to the engine
-        engine.processWithExternalSideChain (buffer, buffer.getReadPointer (scChannel), numSamples);
+        // External sidechain: the (mono-summed) key drives the detector
+        engine.processWithExternalSideChain (mainBuffer, scMonoBuf.data(), numSamples);
     }
     else
     {
         // Internal sidechain: filter the main input per the PDF design
-        engine.process (buffer);
+        engine.process (mainBuffer);
     }
 }
 
