@@ -25,3 +25,5 @@ cmake-build-*/
 *.aaxplugin
 
 build-demo-fix/
+build-release/
+build-demo/
